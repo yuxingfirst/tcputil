@@ -147,8 +147,11 @@ func (this *TcpConn) Read() []byte {
 		return nil
 	}
 
-	if _, err := io.ReadFull(this.conn, buff[this.padding:]); err != nil {
-		return nil
+	// 不等待空消息
+	if msg := buff[this.padding:]; len(msg) != 0 {
+		if _, err := io.ReadFull(this.conn, msg); err != nil {
+			return nil
+		}
 	}
 
 	return buff
@@ -160,7 +163,7 @@ func (this *TcpConn) Read() []byte {
 func (this *TcpConn) ReadPackage() *TcpInput {
 	var data = this.Read()
 
-	if len(data) != 0 {
+	if data != nil {
 		return NewTcpInput(data)
 	}
 

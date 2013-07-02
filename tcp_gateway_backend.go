@@ -77,6 +77,8 @@ func NewTcpGatewayBackend(addr string, pack int, memPool MemPool) (*TcpGatewayBa
 				}
 			}()
 		}
+
+		this.In <- nil
 	}()
 
 	return this, nil
