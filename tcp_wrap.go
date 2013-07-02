@@ -18,13 +18,13 @@ type TcpListener struct {
 
 //
 // 基于现有的监听器包装一个面向包协议的监听器。
-// 参数'pack'用于设置消息包的头部长度，消息包长度就存放在其中，所以请根据消息包的最大长度可能性设置此参数，'pack'必须是2, 4或者8。
+// 参数'pack'用于设置消息包的头部长度，消息包长度就存放在其中，所以请根据消息包的最大长度可能性设置此参数，'pack'必须是1, 2, 4或者8。
 // 参数'padding'通常只要设置成0，这个参数用于优化网关通讯，避免不必要的内存分配和数据复制，请参考'Read'方法。
 // 参数'memPool'用于指派一个内存池实现，用于优化通讯协议解析时的内存分配，请参考'SimpleMemPool'类型。
 //
 func NewTcpListener(listener *net.TCPListener, pack, padding int, memPool MemPool) (*TcpListener, error) {
-	if pack != 2 && pack != 4 && pack != 8 {
-		return nil, errors.New("pack != 2 && pack != 4 && pack != 8")
+	if pack != 1 && pack != 2 && pack != 4 && pack != 8 {
+		return nil, errors.New("pack != 1 && pack != 2 && pack != 4 && pack != 8")
 	}
 
 	return &TcpListener{
@@ -96,8 +96,8 @@ type TcpConn struct {
 // 从现有网络连接包装一个面向包协议的网络连接，参数说明参考‘NewTcpListener'。
 //
 func NewTcpConn(conn *net.TCPConn, pack, padding int, memPool MemPool) (*TcpConn, error) {
-	if pack != 2 && pack != 4 && pack != 8 {
-		return nil, errors.New("pack != 2 && pack != 4 && pack != 8")
+	if pack != 1 && pack != 2 && pack != 4 && pack != 8 {
+		return nil, errors.New("pack != 1 && pack != 2 && pack != 4 && pack != 8")
 	}
 
 	if memPool == nil {
