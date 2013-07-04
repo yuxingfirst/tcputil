@@ -139,7 +139,10 @@ func TestPadding(t *testing.T) {
 func TestGateway(t *testing.T) {
 	var wg sync.WaitGroup
 
-	var backend, err1 = NewTcpGatewayBackend("0.0.0.0:10010", 4, memPool)
+	var msgChan = make(chan *TcpGatewayIntput)
+	var backend, err1 = NewTcpGatewayBackend("0.0.0.0:10010", 4, memPool, func(msg *TcpGatewayIntput) {
+		msgChan <- msg
+	})
 
 	if err1 != nil {
 		t.Fatal(err1)
@@ -156,7 +159,7 @@ func TestGateway(t *testing.T) {
 
 		var clientId1 uint32
 
-		if message1 := <-backend.In; message1.ReadUint32() != 1234 {
+		if message1 := <-msgChan; message1.ReadUint32() != 1234 {
 			t.Fatal("read message1 failed")
 		} else {
 			clientId1 = message1.ClientId
@@ -168,7 +171,7 @@ func TestGateway(t *testing.T) {
 
 		var clientId2 uint32
 
-		if message3 := <-backend.In; message3.ReadUint32() != 4321 {
+		if message3 := <-msgChan; message3.ReadUint32() != 4321 {
 			t.Fatal("read message3 failed")
 		} else {
 			clientId2 = message3.ClientId
@@ -182,11 +185,11 @@ func TestGateway(t *testing.T) {
 			t.Fatal("send broadcast failed")
 		}
 
-		if len((<-backend.In).Data) != 0 {
+		if len((<-msgChan).Data) != 0 {
 			t.Fatal("close not match")
 		}
 
-		if len((<-backend.In).Data) != 0 {
+		if len((<-msgChan).Data) != 0 {
 			t.Fatal("close not match")
 		}
 

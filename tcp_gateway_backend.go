@@ -15,7 +15,6 @@ type TcpGatewayBackend struct {
 	server     *TcpListener
 	links      []*TcpConn
 	linksMutex sync.RWMutex
-	In         chan *TcpGatewayIntput
 }
 
 //
@@ -30,7 +29,7 @@ type TcpGatewayIntput struct {
 // 在指定的地址和端口创建一个网关后端，等待网关前端连接。
 // 一个网关后端可以被多个网关前端连接，客户端ID分配算法会保证不同网关前端的客户端ID不冲突。
 //
-func NewTcpGatewayBackend(addr string, pack int, memPool MemPool) (*TcpGatewayBackend, error) {
+func NewTcpGatewayBackend(addr string, pack int, memPool MemPool, messageHeandler func(msg *TcpGatewayIntput)) (*TcpGatewayBackend, error) {
 	var server, err = Listen(addr, pack, 0, memPool)
 
 	if err != nil {
@@ -40,7 +39,6 @@ func NewTcpGatewayBackend(addr string, pack int, memPool MemPool) (*TcpGatewayBa
 	var this = &TcpGatewayBackend{
 		server: server,
 		links:  make([]*TcpConn, _GATEWAY_MAX_LINKS_),
-		In:     make(chan *TcpGatewayIntput),
 	}
 
 	go func() {
@@ -73,12 +71,12 @@ func NewTcpGatewayBackend(addr string, pack int, memPool MemPool) (*TcpGatewayBa
 						break
 					}
 
-					this.In <- &TcpGatewayIntput{msg.ReadUint32(), msg}
+					messageHeandler(&TcpGatewayIntput{msg.ReadUint32(), msg})
 				}
 			}()
 		}
 
-		this.In <- nil
+		messageHeandler(nil)
 	}()
 
 	return this, nil
