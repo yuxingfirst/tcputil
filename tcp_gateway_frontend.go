@@ -25,6 +25,16 @@ type TcpGatewayBackendInfo struct {
 }
 
 //
+// 网关刷新结果
+//
+type TcpGatewayUpdateResult struct {
+	Id    uint32 // 后端ID
+	IsNew bool   // 是否是新连接
+	Addr  string // 后端地址，如果是旧连接对应被关闭的连接地址
+	Error error  // 错误信息，只在创建新连接时产生
+}
+
+//
 // 在指定地址和端口创建一个网关前端，连接到指定的网关后端，并等待客户端接入。
 // 新接入的客户端首先需要发送一个uint32类型的后端ID，选择客户端实际所要连接的后端。
 //
@@ -145,9 +155,11 @@ func (this *TcpGatewayFrontend) getLink(id uint32) *tcpGatewayLink {
 	return nil
 }
 
-func (this *TcpGatewayFrontend) removeOldLinks(backends []*TcpGatewayBackendInfo) {
+func (this *TcpGatewayFrontend) removeOldLinks(backends []*TcpGatewayBackendInfo) []*TcpGatewayUpdateResult {
 	this.linksMutex.Lock()
 	defer this.linksMutex.Unlock()
+
+	var results = make([]*TcpGatewayUpdateResult, 0, len(backends))
 
 	for id, link := range this.links {
 		var needClose = true
@@ -161,29 +173,34 @@ func (this *TcpGatewayFrontend) removeOldLinks(backends []*TcpGatewayBackendInfo
 
 		if needClose {
 			link.Close(false)
+			results = append(results, &TcpGatewayUpdateResult{id, false, link.addr, nil})
 		}
 	}
+
+	return results
 }
 
 //
 // 更新网关后端，移除地址有变化或者已经不在新配置里的久连接，创建久配置中没有的连接。
 //
-func (this *TcpGatewayFrontend) UpdateBackends(backends []*TcpGatewayBackendInfo) {
-	this.removeOldLinks(backends)
+func (this *TcpGatewayFrontend) UpdateBackends(backends []*TcpGatewayBackendInfo) []*TcpGatewayUpdateResult {
+	var results = this.removeOldLinks(backends)
 
 	for _, backend := range backends {
-		var link = this.getLink(backend.Id)
-
-		if link != nil {
+		if this.getLink(backend.Id) != nil {
 			continue
 		}
 
-		link, _ = newTcpGatewayLink(this, backend, this.pack, this.memPool)
+		var link, err = newTcpGatewayLink(this, backend, this.pack, this.memPool)
 
 		if link != nil {
 			this.addLink(backend.Id, link)
 		}
+
+		results = append(results, &TcpGatewayUpdateResult{backend.Id, true, backend.Addr, err})
 	}
+
+	return results
 }
 
 //
