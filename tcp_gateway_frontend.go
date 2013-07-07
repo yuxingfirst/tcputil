@@ -16,10 +16,19 @@ type TcpGatewayFrontend struct {
 }
 
 //
+// 网关后端信息
+//
+type TcpGatewayBackendInfo struct {
+	Id             uint32 // 后端ID
+	Addr           string // 地址
+	TakeClientAddr bool   // 是否在客户端首次连接时发送IP
+}
+
+//
 // 在指定地址和端口创建一个网关前端，连接到指定的网关后端，并等待客户端接入。
 // 新接入的客户端首先需要发送一个uint32类型的后端ID，选择客户端实际所要连接的后端。
 //
-func NewTcpGatewayFrontend(addr string, pack int, memPool MemPool, backends map[uint32]string) (*TcpGatewayFrontend, error) {
+func NewTcpGatewayFrontend(addr string, pack int, memPool MemPool, backends []*TcpGatewayBackendInfo) (*TcpGatewayFrontend, error) {
 	server, err := Listen(addr, pack, pack+4, memPool)
 
 	if err != nil {
@@ -58,6 +67,15 @@ func NewTcpGatewayFrontend(addr string, pack int, memPool MemPool, backends map[
 					link.DelClient(clientId)
 					link.SendDelClient(clientId)
 				}()
+
+				if link.takeClientAddr {
+					var addr = client.conn.RemoteAddr().String()
+					var addrMsg = client.NewPackage(4 + 2 + len(addr))
+
+					addrMsg.WriteUint32(clientId).WriteUint8(uint8(len(addr))).WriteBytes([]byte(addr))
+
+					link.SendToBackend(addrMsg.buff)
+				}
 
 				for {
 					var msg = client.Read()
@@ -127,12 +145,21 @@ func (this *TcpGatewayFrontend) getLink(id uint32) *tcpGatewayLink {
 	return nil
 }
 
-func (this *TcpGatewayFrontend) removeOldLinks(backends map[uint32]string) {
+func (this *TcpGatewayFrontend) removeOldLinks(backends []*TcpGatewayBackendInfo) {
 	this.linksMutex.Lock()
 	defer this.linksMutex.Unlock()
 
 	for id, link := range this.links {
-		if _, exists := backends[id]; !exists || link.addr != backends[id] {
+		var needClose = true
+
+		for _, backend := range backends {
+			if id == backend.Id && link.addr == backend.Addr {
+				needClose = false
+				break
+			}
+		}
+
+		if needClose {
 			link.Close(false)
 		}
 	}
@@ -141,20 +168,20 @@ func (this *TcpGatewayFrontend) removeOldLinks(backends map[uint32]string) {
 //
 // 更新网关后端，移除地址有变化或者已经不在新配置里的久连接，创建久配置中没有的连接。
 //
-func (this *TcpGatewayFrontend) UpdateBackends(backends map[uint32]string) {
+func (this *TcpGatewayFrontend) UpdateBackends(backends []*TcpGatewayBackendInfo) {
 	this.removeOldLinks(backends)
 
-	for id, addr := range backends {
-		var link = this.getLink(id)
+	for _, backend := range backends {
+		var link = this.getLink(backend.Id)
 
 		if link != nil {
 			continue
 		}
 
-		link, _ = newTcpGatewayLink(this, id, addr, this.pack, this.memPool)
+		link, _ = newTcpGatewayLink(this, backend, this.pack, this.memPool)
 
 		if link != nil {
-			this.addLink(id, link)
+			this.addLink(backend.Id, link)
 		}
 	}
 }

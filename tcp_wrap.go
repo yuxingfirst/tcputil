@@ -114,7 +114,7 @@ func NewTcpConn(conn *net.TCPConn, pack, padding int, memPool MemPool) (*TcpConn
 }
 
 //
-// 连接目标地址，并返回一个面向包协议的连接，参数说明参考‘NewTcpListener'。
+// 连接目标地址，并返回一个面向包协议的连接，参数说明参考'NewTcpListener'。
 //
 func Connect(addr string, pack, padding int, memPool MemPool) (*TcpConn, error) {
 	var conn, err2 = net.Dial("tcp", addr)
@@ -124,6 +124,30 @@ func Connect(addr string, pack, padding int, memPool MemPool) (*TcpConn, error) 
 	}
 
 	return NewTcpConn(conn.(*net.TCPConn), pack, padding, memPool)
+}
+
+//
+// 连接网关，参考'Connect'。
+//
+func ConnectGateway(addr string, pack, padding int, memPool MemPool, backendId uint32) (*TcpConn, error) {
+	var conn, err1 = net.Dial("tcp", addr)
+
+	if err1 != nil {
+		return nil, err1
+	}
+
+	var tcpConn, err2 = NewTcpConn(conn.(*net.TCPConn), pack, padding, memPool)
+
+	if err2 != nil {
+		return nil, err2
+	}
+
+	if err3 := tcpConn.NewPackage(4).WriteUint32(1).Send(); err3 != nil {
+		tcpConn.Close()
+		return nil, err3
+	}
+
+	return tcpConn, nil
 }
 
 //

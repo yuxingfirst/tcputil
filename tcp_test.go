@@ -1,6 +1,7 @@
 package tcputil
 
 import (
+	"strings"
 	"sync"
 	"testing"
 )
@@ -8,7 +9,7 @@ import (
 var memPool, _ = NewSimpleMemPool(1024, 1024)
 
 //
-// test client and server communication
+// 测试基本通讯
 //
 func TestTcpWrap(t *testing.T) {
 	var wg sync.WaitGroup
@@ -75,7 +76,7 @@ func TestTcpWrap(t *testing.T) {
 }
 
 //
-// test padding
+// 测试消息头空间预留
 //
 func TestPadding(t *testing.T) {
 	var wg sync.WaitGroup
@@ -134,7 +135,7 @@ func TestPadding(t *testing.T) {
 }
 
 //
-// test gateway
+// 测试网关
 //
 func TestGateway(t *testing.T) {
 	var wg sync.WaitGroup
@@ -196,30 +197,22 @@ func TestGateway(t *testing.T) {
 		closeWait <- 1
 	}()
 
-	var frontend, err2 = NewTcpGatewayFrontend("0.0.0.0:10086", 4, memPool, map[uint32]string{1: "127.0.0.1:10010"})
+	var frontend, err2 = NewTcpGatewayFrontend("0.0.0.0:10086", 4, memPool, []*TcpGatewayBackendInfo{{1, "127.0.0.1:10010", false}})
 
 	if err2 != nil {
 		t.Fatal(err2)
 	}
 
-	var client1, err3 = Connect("0.0.0.0:10086", 4, 0, memPool)
+	var client1, err3 = ConnectGateway("0.0.0.0:10086", 4, 0, memPool, 1)
 
 	if err3 != nil {
 		t.Fatal(err3)
 	}
 
-	if client1.NewPackage(4).WriteUint32(1).Send() != nil {
-		t.Fatal("client1 send select server failed")
-	}
-
-	var client2, err4 = Connect("0.0.0.0:10086", 4, 0, memPool)
+	var client2, err4 = ConnectGateway("0.0.0.0:10086", 4, 0, memPool, 1)
 
 	if err4 != nil {
 		t.Fatal(err4)
-	}
-
-	if client2.NewPackage(4).WriteUint32(1).Send() != nil {
-		t.Fatal("client2 send select server failed")
 	}
 
 	if client1.NewPackage(4).WriteUint32(1234).Send() != nil {
@@ -248,6 +241,68 @@ func TestGateway(t *testing.T) {
 
 	client1.Close()
 	client2.Close()
+
+	<-closeWait
+
+	frontend.Close()
+
+	wg.Wait()
+}
+
+//
+// 测试获取客户端IP
+//
+func TestTakeClientAddr(t *testing.T) {
+	var wg sync.WaitGroup
+
+	var msgChan = make(chan *TcpGatewayIntput)
+	var backend, err1 = NewTcpGatewayBackend("0.0.0.0:10010", 4, memPool, func(msg *TcpGatewayIntput) {
+		msgChan <- msg
+	})
+
+	if err1 != nil {
+		t.Fatal(err1)
+	}
+
+	var closeWait = make(chan int)
+
+	wg.Add(1)
+	go func() {
+		defer func() {
+			backend.Close()
+			wg.Done()
+		}()
+
+		var message1 = <-msgChan
+
+		if strings.Index(string(message1.ReadBytes8()), "127.0.0.1:") != 0 {
+			t.Fatal("read message1 failed")
+		}
+
+		if backend.NewPackage(message1.ClientId, 4).WriteUint32(1234).Send() != nil {
+			t.Fatal("send message2 failed")
+		}
+
+		closeWait <- 1
+	}()
+
+	var frontend, err2 = NewTcpGatewayFrontend("0.0.0.0:10086", 4, memPool, []*TcpGatewayBackendInfo{{1, "127.0.0.1:10010", true}})
+
+	if err2 != nil {
+		t.Fatal(err2)
+	}
+
+	var client1, err3 = ConnectGateway("0.0.0.0:10086", 4, 0, memPool, 1)
+
+	if err3 != nil {
+		t.Fatal(err3)
+	}
+
+	if client1.ReadPackage().ReadUint32() != 1234 {
+		t.Fatal("read message2 failed")
+	}
+
+	client1.Close()
 
 	<-closeWait
 

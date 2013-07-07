@@ -13,17 +13,18 @@ const (
 )
 
 type tcpGatewayLink struct {
-	owner        *TcpGatewayFrontend
-	id           uint32
-	addr         string
-	pack         int
-	conn         *TcpConn
-	clients      map[uint32]*TcpConn
-	clientsMutex sync.RWMutex
-	maxClientId  uint32
+	owner          *TcpGatewayFrontend
+	id             uint32
+	addr           string
+	pack           int
+	conn           *TcpConn
+	clients        map[uint32]*TcpConn
+	clientsMutex   sync.RWMutex
+	maxClientId    uint32
+	takeClientAddr bool
 }
 
-func newTcpGatewayLink(owner *TcpGatewayFrontend, id uint32, addr string, pack int, memPool MemPool) (*tcpGatewayLink, error) {
+func newTcpGatewayLink(owner *TcpGatewayFrontend, backend *TcpGatewayBackendInfo, pack int, memPool MemPool) (*tcpGatewayLink, error) {
 	var (
 		this             *tcpGatewayLink
 		conn             *TcpConn
@@ -32,7 +33,7 @@ func newTcpGatewayLink(owner *TcpGatewayFrontend, id uint32, addr string, pack i
 		beginClientId    uint32
 	)
 
-	if conn, err = Connect(addr, pack, 0, memPool); err != nil {
+	if conn, err = Connect(backend.Addr, pack, 0, memPool); err != nil {
 		return nil, err
 	}
 
@@ -43,13 +44,14 @@ func newTcpGatewayLink(owner *TcpGatewayFrontend, id uint32, addr string, pack i
 	beginClientId = getUint32(beginClientIdMsg)
 
 	this = &tcpGatewayLink{
-		owner:       owner,
-		id:          id,
-		addr:        addr,
-		pack:        pack,
-		conn:        conn,
-		clients:     make(map[uint32]*TcpConn),
-		maxClientId: beginClientId,
+		owner:          owner,
+		id:             backend.Id,
+		addr:           backend.Addr,
+		pack:           pack,
+		conn:           conn,
+		clients:        make(map[uint32]*TcpConn),
+		maxClientId:    beginClientId,
+		takeClientAddr: backend.TakeClientAddr,
 	}
 
 	go func() {
